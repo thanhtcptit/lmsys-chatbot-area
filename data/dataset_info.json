@@ -1,0 +1,17 @@
+{
+    "lmsys2-long": {
+        "file_name": "instruction_alpaca/lmsys2-long.json"
+    },
+    "lmsys3-long": {
+        "file_name": "instruction_alpaca/lmsys3-long.json"
+    },
+    "lmsys3-long-aug": {
+        "file_name": "instruction_alpaca/lmsys3-long-aug.json"
+    },
+    "lmsys2-extr": {
+        "file_name": "instruction_alpaca/lmsys2-extr.json"
+    },
+    "lmsys3-extr": {
+        "file_name": "instruction_alpaca/lmsys3-extr.json"
+    }
+}
