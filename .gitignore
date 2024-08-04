@@ -100,4 +100,4 @@ log*
 experiments
 scripts
 TODO
-data/instruction_alpaca/*
+data/*

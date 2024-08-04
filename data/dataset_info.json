@@ -13,5 +13,20 @@
     },
     "lmsys3-extr": {
         "file_name": "instruction_alpaca/lmsys3-extr.json"
+    },
+    "lmsys_ultrafeedback_aug": {
+        "file_name": "instruction_alpaca/lmsys_ultrafeedback_aug.json"
+    },
+    "lmsys_ultrafeedback_aug_half": {
+        "file_name": "instruction_alpaca/lmsys_ultrafeedback_aug_half.json"
+    },
+    "lmsys_ultrafeedback_aug_2": {
+        "file_name": "instruction_alpaca/lmsys_ultrafeedback_aug_2.json"
+    },
+    "lmsys_ultrafeedback_aug_length": {
+        "file_name": "instruction_alpaca/lmsys_ultrafeedback_aug_length.json"
+    },
+    "lmsys_aug_length": {
+        "file_name": "instruction_alpaca/lmsys_aug_length.json"
     }
 }
