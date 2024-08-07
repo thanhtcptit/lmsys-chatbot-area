@@ -1,5 +1,4 @@
 import os
-import ast
 import json
 
 import numpy as np
@@ -9,21 +8,8 @@ from transformers import AutoTokenizer
 
 from tqdm import tqdm
 
-from src.convert_ultrafeedback import main as convert_ultrafeedback
-
-
-LENGTH_CONFIGS = {
-    "long": {
-        "max_tokens": 2720,
-        "max_prompt_tokens": 512,
-        "max_resp_tokens": 1024
-    },
-    "extr": {
-        "max_tokens": 3500,
-        "max_prompt_tokens": 768,
-        "max_resp_tokens": 1280
-    }
-}
+from src.instruction import INSTRUCTION_TEXT, PROMPT_TEMPLATE
+from src.convert_ultrafeedback import convert_ultrafeedback
 
 
 def get_stats(arr):
@@ -33,40 +19,28 @@ def get_stats(arr):
     ]
 
 
-def process_text(text, tokenizer=None, max_length=None):
+def process_text(text):
     text = " ".join(eval(text, {"null": "None"}))
-    if not text:
-        return "None"
-    if max_length and tokenizer:
-        tokens = tokenizer.encode(text)
-        if len(tokens) > max_length:
-            text = tokenizer.decode(tokens[:max_length])
     return text
 
 
-def main():
+def convert_lmsys(
+    data_file,
+    output_file,
+    max_tokens=2720,
+    max_prompt_tokens=512,
+    max_resp_tokens=1024,
+    order_augment=True,
+    length_augment=True,
+    use_ultrafeedback=False,
+):
     np.random.seed(442)
 
-    train_csv = "./data/csv/train.csv"
-    output_file = "./data/instruction_alpaca/lmsys_ultrafeedback_aug_length.json"
     output_dir = os.path.split(output_file)[0]
     os.makedirs(output_dir, exist_ok=True)
 
-    train_df = pd.read_csv(train_csv)
-    max_tokens = 2720
-    max_prompt_tokens = 512
-    max_resp_tokens = 1024
-    order_augment = True
-    length_augment = True
-    use_ultrafeedback = True
-
+    data_df = pd.read_csv(data_file)
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
-    instruction_text = "Given a prompt and two responses #a and #b, evaluate which response is superior or if both responses are equally good."
-    # prompt_template = "<Prompt> {prompt}\n<Response #a>: {resp_a}\n<Response #b>: {resp_b}\n### Answer:"
-
-    # prompt_template = "<Prompt>:<|reserved_special_token_50|>\n{prompt}\n<|reserved_special_token_51|>\n\n<Response #a>:\n<|reserved_special_token_52|>\n{resp_a}\n<|reserved_special_token_53|>\n\n<Response #b>:\n<|reserved_special_token_54|>\n{resp_b}\n<|reserved_special_token_55|>\n\nAnswer with a, b, or tie.\n### Answer:"
-
-    prompt_template = "<Prompt>:<|reserved_special_token_50|>\n{prompt}\n<|reserved_special_token_51|>\n\n<Response #a>:\n<|reserved_special_token_52|>\n{resp_a}\n<|reserved_special_token_53|>\n\n<Response #b>:\n<|reserved_special_token_54|>\n{resp_b}\n<|reserved_special_token_55|>\n\nEvaluate which response is superior or if both responses are equally good. Answer with a, b, or tie.\n### Answer:"
     dataset, dataset_aug = [], []
 
     data_stats = {
@@ -75,7 +49,7 @@ def main():
         "resp_a": [],
         "resp_b": []
     }
-    for idx, sample in tqdm(train_df.iterrows(), total=len(train_df)):
+    for idx, sample in tqdm(data_df.iterrows(), total=len(data_df)):
         prompt_text = process_text(sample["prompt"])
         resp_a_text = process_text(sample["response_a"])
         resp_b_text = process_text(sample["response_b"])
@@ -100,25 +74,30 @@ def main():
         prompt = tokenizer.decode(encoded_prompt)
         resp_a = tokenizer.decode(encoded_resp_a)
         resp_b = tokenizer.decode(encoded_resp_b)
-        input_text = prompt_template.format_map({
+        input_text = PROMPT_TEMPLATE.format_map({
             "prompt": prompt, 
             "resp_a": resp_a,
             "resp_b": resp_b
         })
 
-        dataset.append({
-            "instruction": instruction_text,
-            "input": input_text,
-            "output": output_text
-        })
-        
         if length_augment:
             prompt = tokenizer.decode(encoded_prompt[:np.random.randint(256, max_prompt_tokens)])
             resp_a = tokenizer.decode(encoded_resp_a[:np.random.randint(512, max_resp_tokens)])
             resp_b = tokenizer.decode(encoded_resp_b[:np.random.randint(512, max_resp_tokens)])
 
+        dataset.append({
+            "instruction": INSTRUCTION_TEXT,
+            "input": input_text,
+            "output": output_text
+        })
+
         if order_augment:
-            input_text_aug = prompt_template.format_map({
+            if length_augment:
+                prompt = tokenizer.decode(encoded_prompt[:np.random.randint(128, 256)])
+                resp_a = tokenizer.decode(encoded_resp_a[:np.random.randint(352, 512)])
+                resp_b = tokenizer.decode(encoded_resp_b[:np.random.randint(352, 512)])
+
+            input_text_aug = PROMPT_TEMPLATE.format_map({
                 "prompt": prompt, 
                 "resp_a": resp_b,
                 "resp_b": resp_a
@@ -130,7 +109,7 @@ def main():
                 output_text_aug = "a"
 
             dataset_aug.append({
-                "instruction": instruction_text,
+                "instruction": INSTRUCTION_TEXT,
                 "input": input_text_aug,
                 "output": output_text_aug
             })
@@ -140,21 +119,23 @@ def main():
         data_stats["resp_a"].append(len(encoded_resp_a))
         data_stats["resp_b"].append(len(encoded_resp_b))
 
-
     if use_ultrafeedback:
         ultrafeedback_dataset, ultrafeedback_dataset_aug = convert_ultrafeedback(order_augment=True)
         dataset += ultrafeedback_dataset
         dataset_aug += ultrafeedback_dataset_aug
+
     np.random.shuffle(dataset)
     np.random.shuffle(dataset_aug)
-
-    dataset += dataset_aug
+    dataset = dataset_aug + dataset
     with open(output_file, "w") as f:
         json.dump(dataset, f, indent=4)
 
+    print("LMSYS dataset stats")
     for k, v in data_stats.items():
         print(k, get_stats(v))
 
 
 if __name__ == "__main__":
-    main()
+    train_csv = "./data/csv/train.csv"
+    output_file = "./data/instruction/lmsys.json"
+    convert_lmsys(train_csv, output_file)
